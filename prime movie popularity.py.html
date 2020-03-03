@@ -1,0 +1,661 @@
+
+# coding: utf-8
+
+# In[3]:
+
+
+# import packages
+import numpy as np
+import pandas as pd
+import sklearn as sl
+import seaborn as sns
+import matplotlib.pyplot as plt
+pd.set_option("display.float_format", lambda x: "%.3f" % x) # specify the float to three point
+
+
+# In[4]:
+
+
+# load data
+TV = pd.read_table("/Users/gege/Downloads/TVdata.txt", sep = ",", lineterminator = "\n")
+TV.head()
+
+
+# # explore the data
+
+# In[5]:
+
+
+print(TV.shape)
+
+
+# In[6]:
+
+
+TV.info()
+
+
+#  There is no null in the data
+
+# In[7]:
+
+
+TV.describe()
+
+
+# There are 4 variables have about 25% zeros in the data, which make no secse, like budget, boxoffice, metacritic_score and star_category, and for budget, boxoffice and metacritic_score, there are 50% 0, which are missing values.
+
+# In[8]:
+
+
+# check duplicate data
+if len(TV.set_index("video_id").index.get_duplicates()) == 0:
+    print ("There is no duplicate data")
+
+
+# In[9]:
+
+
+# see the predictive variable
+plt.hist(TV["cvt_per_day"], bins = range(0, 15000, 30), color = "r", alpha = 0.5, density = True, label = "cvt_per_day")
+plt.legend(loc = "upper right")
+plt.title("Historgrams of cvt_per_day before data processing")
+plt.xlabel("cvt_per_day")
+plt.ylabel("density")
+plt.show()
+
+plt.hist(TV["cvt_per_day"], log = True, bins = range(0, 15000, 30), density = True, color = "g", label = "cvt_per_day_log_scale")
+plt.legend(loc = "upper center")
+plt.title("Historgrams of cvt_per_day_log before data processing")
+plt.xlabel("cvt_per_day_log_scale")
+plt.ylabel("density")
+plt.show()
+
+
+# In[10]:
+
+
+# see correlations
+corr = TV[['cvt_per_day','weighted_categorical_position','weighted_horizontal_poition'
+               ,'release_year', 'imdb_votes', 'budget', 'boxoffice' ,'imdb_rating', 
+               'duration_in_mins', 'metacritic_score', 'star_category']].corr()
+corr
+
+
+# In[11]:
+
+
+sns.heatmap(corr, cmap = "YlGnBu")
+
+
+# In[14]:
+
+
+# see categorical variables
+sns.stripplot(x = "import_id", y = "cvt_per_day", data = TV, jitter = True)
+plt.show()
+print(TV["import_id"].value_counts().reset_index())
+
+sns.stripplot(x = "mpaa", y = "cvt_per_day", data = TV, jitter = True)
+plt.show()
+print(TV["mpaa"].value_counts())
+
+sns.stripplot(x = "awards", y = "cvt_per_day", data = TV, jitter = True)
+plt.show()
+print(TV["awards"].value_counts().reset_index())
+
+
+# In[34]:
+
+
+genres_dumy = TV["genres"].str.get_dummies(sep = ",").sum().sort_values(ascending = False)
+genres_dumy.plot.bar(color = "b", width = 0.75)
+
+
+# 6 genres including Anime, Reality, Lifestyle, Adult, LGBT, Holiday have low frequencies. Therefore, during feature processing, they will be grouped together as: 'Misc_gen' in the feature 'genres'.
+
+# In[36]:
+
+
+TV["release_year"].describe()
+plt.hist(TV["release_year"], bins = range(1916, 2017, 1), color = "r")
+plt.title("Historgrams of release_year before data processing")
+plt.xlabel("release_year")
+plt.ylabel("count")
+plt.show()
+
+
+# # Feature Processing
+
+# Categorical features
+# There are 5 categorical features: import_id, mpaa, awards, genres, and release_year. There is no missing data in them. They can be converted into dummy/indicators.
+# 
+# The first 3 have relatively small sub-types, they can be easily converted to dummies.
+# 
+# The 'genres' have 27 different sub-types, 6 of them are rarely observed (refer to previous section). It's reasonable to group these 6 into 1. Note: a video may have more than one genre, in the feature preprocessing, all genres are handled individually.
+# 
+# The release_year is bined into 10 buckets based on the year range between 1917 and 2017.
+
+# In[37]:
+
+
+# Convert 3 Categorical variables into dummy variables
+d_import_id = pd.get_dummies(TV["import_id"]).astype(np.int)
+d_mpaa = pd.get_dummies(TV["mpaa"]).astype(np.int)
+d_awards = pd.get_dummies(TV["awards"]).astype(np.int)
+
+
+# In[42]:
+
+
+# genres
+d_genres = TV["genres"].str.get_dummies(sep = ",").astype(np.int)
+d_genres["Misc_gen"] = d_genres['Anime']|d_genres['Reality']|d_genres['Lifestyle']|d_genres['Adult']|d_genres['LGBT']|d_genres['Holiday']
+d_genres.drop(["Anime", "Reality", "Lifestyle", "Adult", "LGBT", "Holiday"], inplace = True, axis = 1)
+
+
+# In[44]:
+
+
+# bin year
+TV["release_year"].describe(percentiles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+bin_year = [1916, 1974, 1991, 2001, 2006, 2008, 2010, 2012, 2013, 2014, 2017]
+year_range = ['1916-1974', '1974-1991', '1991-2001', '2001-2006','2006-2008','2008-2010','2010-2012','2012-2013',
+              '2013-2014','2014-2017']
+year_bin = pd.cut(TV['release_year'], bin_year, labels=year_range)
+d_year = pd.get_dummies(year_bin).astype(int)
+
+
+# In[52]:
+
+
+TV_temp = TV.drop(["import_id", "mpaa", "awards", "genres", "release_year"], axis = 1)
+newTV = pd.concat([TV_temp, d_import_id, d_mpaa, d_awards, d_genres, d_year], axis=1)
+print(newTV.shape)
+print(pd.isnull(newTV).any())
+newTV_copy = newTV.copy()
+
+
+# In[53]:
+
+
+newTV.info()
+
+
+# 
+# Feature space holds 4226 observations and 58 features in total.
+# 
+# There is NO null data. newTV_0 is kepted as the raw dataframe before any further feature processing.
+# 
+# We will replace 0 with null, and then fill missing value etc.
+# 
+# 
+
+# # Handling of missing data
+
+# In[54]:
+
+
+# replace 0 with nan, you should not use newTV = newTV.replace(), since after one_hot, a lot 0 which we should not replace with nan.
+# we shouls see before precessing, which column has 0 and replace them
+newTV[['budget','boxoffice','metacritic_score', 'star_category','imdb_votes', 'imdb_rating']] = newTV[['budget','boxoffice','metacritic_score', 'star_category','imdb_votes', 'imdb_rating']].replace(0, np.nan)
+newTV.isnull().sum()
+
+
+# In[55]:
+
+
+# fill missing values with mean value
+newTV_copy1 = newTV.copy()
+newTV["imdb_votes"].fillna(newTV["imdb_votes"].mean(), inplace = True)
+newTV["budget"] .fillna(newTV["budget"].mean(), inplace = True)
+newTV["boxoffice"] .fillna(newTV["boxoffice"].mean(), inplace = True)
+newTV["imdb_rating"] .fillna(newTV["imdb_rating"].mean(), inplace = True)
+newTV["metacritic_score"] .fillna(newTV["metacritic_score"].mean(), inplace = True)
+newTV["star_category"] .fillna(newTV["star_category"].mean(), inplace = True)
+newTV.isnull().sum()
+
+
+# # Feature scaling
+# 
+
+# The impact of different scaling methods on the model performance is small. In the following model training and selections, the standard scaling (sc) data is used.
+
+# In[56]:
+
+
+from sklearn import preprocessing
+newTV_copy2 = newTV.copy()
+scale_col = ['weighted_categorical_position', 'weighted_horizontal_poition', 'budget','boxoffice', 
+             'imdb_votes','imdb_rating','duration_in_mins', 'metacritic_score','star_category']
+sc_scale = sl.preprocessing.StandardScaler().fit(newTV[scale_col])
+newTV[scale_col] = sc_scale.transform(newTV[scale_col])
+newTV.head()
+
+
+# # Model train
+
+# In[57]:
+
+
+# split train and test data
+from sklearn.model_selection import train_test_split   
+train_data, test_data = train_test_split(newTV, test_size = 0.15, random_state = 3)
+train_data_x = train_data.drop(["video_id", "cvt_per_day"], axis = 1)
+train_data_y = train_data["cvt_per_day"]
+test_data_x = test_data.drop(["video_id", "cvt_per_day"], axis = 1)
+test_data_y = test_data["cvt_per_day"]
+
+
+# In[58]:
+
+
+# split train data to train and valid data
+la_train_x, la_valid_x, la_train_y, la_valid_y = train_test_split(train_data_x, train_data_y, test_size = 0.15, random_state = 0)
+
+
+# In[59]:
+
+
+from sklearn.linear_model import LinearRegression, Lasso, Ridge
+alpha = np.logspace(-0.3, 2.5, 150)
+score = np.empty_like(alpha)
+max_score = float("-inf")
+opt_a = float("-inf")
+for i, a in enumerate(alpha):
+    lasso = Lasso(alpha = a)
+    lasso.fit(la_train_x, la_train_y)
+    score[i] = lasso.score(la_valid_x, la_valid_y)
+    if score[i] > max_score:
+        opt_a = a
+        max_score = score[i]
+        lasso_save = lasso
+plt.plot(alpha, score, marker = "o", color = "b", linestyle = "dashed")
+plt.xlabel("alpha")
+plt.ylabel("score")
+plt.grid(True)
+plt.show()
+print("The optimal alpha and score is :", opt_a, max_score)
+
+
+# In[67]:
+
+
+# combine the validate data and training data, use the optimal alpha, re-train the model
+lasso_f = Lasso()
+lasso_f.set_params(alpha = opt_a)
+lasso_f.fit(train_data_x, train_data_y)
+# lasso_f is the Lasso model (linear feature), to be tested with final test data.
+
+
+# 2) Polynomial features
+# 
+
+# In[68]:
+
+
+from sklearn.preprocessing import PolynomialFeatures
+
+poly = PolynomialFeatures(2)
+
+po_train_x, po_valid_x, po_train_y, po_valid_y = train_test_split(train_data_x, train_data_y, test_size = 0.15, random_state = 0)
+po_train_xp = poly.fit_transform(po_train_x)
+po_valid_xp = poly.fit_transform(po_valid_x)
+
+
+# In[71]:
+
+
+alphas = np.logspace (-2.6, 2.5, num=50)
+# alphas= [1]
+scores = np.empty_like(alphas)
+opt_a = float('-inf')
+max_score = float('-inf')
+for i, a in enumerate(alphas):
+    lasso = Lasso()
+    lasso.set_params(alpha = a)
+    lasso.fit(po_train_xp, po_train_y)
+    scores[i] = lasso.score(po_valid_xp, po_valid_y)
+    if scores[i] > max_score:
+        max_score = scores[i]
+        opt_a = a
+        lasso_save = lasso
+        
+plt.plot(alphas, scores, color='b', linestyle='dashed', marker='o',markerfacecolor='blue', markersize=6)
+plt.xlabel('alpha')
+plt.ylabel('score')
+plt.grid(True)
+plt.title('score vs. alpha')
+plt.show()
+print ('The optimaized alpha and score of Lasso polynomial is: ', opt_a, max_score)
+
+
+# In[72]:
+
+
+# combine the validate data and training data, use the optimal alpha, re-train the model
+train_data_xp = poly.fit_transform(train_data_x)
+lasso_fp = Lasso(alpha = opt_a)
+lasso_fp.fit(train_data_xp, train_data_y)
+# lasso_fp is the Lasso model (polynomial feature), to be tested with test data.
+
+
+# Ridge linear regression
+# 
+
+# In[73]:
+
+
+ri_train_x, ri_valid_x, ri_train_y, ri_valid_y = train_test_split(train_data_x, train_data_y, test_size = 0.15, random_state = 0)
+
+
+# In[74]:
+
+
+alphas = np.logspace(-10, 3, num = 150)
+scores = np.empty_like(alphas)
+opt_a = float("-inf")
+max_score = float("-inf")
+for i, a in enumerate(alphas):
+    ridge = Ridge(alpha = a)
+    ridge.fit(ri_train_x, ri_train_y)
+    scores[i] = ridge.score(ri_valid_x, ri_valid_y)
+    if scores[i] > max_score:
+        max_score = scores[i]
+        opt_a = a
+        ridge_save = ridge
+plt.plot(alphas, scores, color = "r", marker = "o")
+plt.xlabel("alpha")
+plt.ylabel("score")
+plt.grid(True)
+plt.show()
+print("The optimaized alpha and score of Ridge polynomial is: ", opt_a, max_score)
+
+
+# In[76]:
+
+
+# add the 15% validate data, use the optimal alpha, re-train the model
+ridge_f = Ridge(alpha = opt_a)
+ridge_f.fit(train_data_x, train_data_y)
+# ridge_f is the Ridge model (linear feature), to be tested with test data.
+
+
+# 2) Polynomial featuers
+# 
+
+# In[77]:
+
+
+# Use the same training data set as Lasso (polynomial features)
+from sklearn.preprocessing import PolynomialFeatures
+poly = PolynomialFeatures(2)
+
+lr_train, lr_valid = train_test_split(train_data, test_size=0.15, random_state = 0)
+
+lr_train_x = lr_train.drop(['video_id', 'cvt_per_day'], axis = 1)
+lr_valid_x = lr_valid.drop(['video_id', 'cvt_per_day'], axis = 1)
+lr_train_y = lr_train['cvt_per_day']
+lr_valid_y = lr_valid['cvt_per_day']
+
+lr_train_xp = poly.fit_transform(lr_train_x)
+lr_valid_xp = poly.fit_transform(lr_valid_x)
+
+alphas = np.logspace (-2, 2, num=20)
+# alphas= [1]
+scores = np.empty_like(alphas)
+opt_a = float('-inf')
+max_score = float('-inf')
+for i, a in enumerate(alphas):
+    ridge = Ridge()
+    ridge.set_params(alpha = a)
+    ridge.fit(lr_train_xp, lr_train_y)
+    scores[i] = ridge.score(lr_valid_xp, lr_valid_y)
+    if scores[i] > max_score:
+        max_score = scores[i]
+        opt_a = a
+        ridge_save = ridge
+        
+plt.plot(alphas, scores, color='brown', linestyle='dashed', marker='o',markerfacecolor='g', markersize=6)
+plt.xlabel('alpha')
+plt.ylabel('score')
+plt.grid(True)
+plt.show()
+print (opt_a, max_score)
+
+
+# In[78]:
+
+
+# add the 15% validate data, use the optimal alpha, re-train the model
+lr_train_xp = poly.fit_transform(train_data_x)
+
+ridge_fp = Ridge()
+ridge_fp.set_params(alpha = opt_a)
+ridge_fp.fit(lr_train_xp, train_data_y)
+
+# ridge_fp is the Ridge model (polynomial feature), to be tested with test data.
+
+
+# # Non-linear model
+# Random forest with Gridsearch cross-validation is used. The 'mean_scores' is used to narrow down the paramenters of n_estimator (number of trees in the forest) and Max_depth (maximum depth of the tree).
+
+# In[90]:
+
+
+rf_train_x, rf_valid_x, rf_train_y, rf_valid_y = train_test_split(train_data_x, train_data_y, test_size = 0.15, random_state = 0)
+
+
+# In[91]:
+
+
+from sklearn.ensemble import RandomForestRegressor
+#from sklearn.cross_validation import cross_val_score
+from sklearn.model_selection import cross_validate
+from sklearn.model_selection import GridSearchCV
+
+grid_param = {
+                 'n_estimators': [54, 55, 56, 57, 58, 59, 60, 62],
+                 'max_depth': [12, 13, 14, 15, 16, 17]
+             }
+rf = RandomForestRegressor(random_state = 2, max_features = "sqrt")
+rf.grid = GridSearchCV(rf, grid_param, cv = 5)
+rf.grid.fit(rf_train_x, rf_train_y)
+
+
+# In[92]:
+
+
+rf.grid.best_params_
+
+
+# In[93]:
+
+
+rf.grid.cv_results_
+
+
+# In[94]:
+
+
+scores = rf.grid.cv_results_["mean_test_score"]
+n_est = [54, 55, 56, 57, 58, 59, 60, 62]
+m_depth = [12, 13, 14, 15, 16, 17]
+scores = np.array(scores).reshape(len(m_depth), len(n_est))
+plt.figure()
+plt.subplot(111)
+for i, a in enumerate(m_depth):
+    plt.plot(n_est, scores[i], marker = "o", label = "max depth" + str(a))
+plt.legend(loc = "center right", bbox_to_anchor = (1.35, 0.5))
+plt.xlabel('num of trees')
+plt.ylabel('Mean score')
+plt.grid(True)
+plt.show()
+
+
+# In[97]:
+
+
+rf = RandomForestRegressor(random_state=2, max_features = 'sqrt', max_depth= 14, n_estimators=55)
+rf.fit(train_data_x, train_data_y)
+
+
+# # Model Evaluation
+# Test data is the reserved 15% of the whole dataset, and has never been seen by the above models.
+
+#  Lasso test with linear features (lasso_f)
+
+# In[98]:
+
+
+from sklearn.metrics import mean_squared_error
+from math import sqrt
+
+
+# In[99]:
+
+
+lasso_f_score = lasso_f.score(test_data_x, test_data_y)
+pred_y = lasso_f.predict(test_data_x)
+MSE_lasso_f = mean_squared_error(test_data_y, pred_y)
+RMSE_lasso_f = sqrt(mean_squared_error(test_data_y, pred_y))
+print ('lasso_f score: ', lasso_f_score)
+print ('Mean square error of lasso_f: ', MSE_lasso_f)
+print ('Root mean squared error of lasso_f:', RMSE_lasso_f)
+
+
+# In[100]:
+
+
+test_data_xp = poly.fit_transform(test_data_x)
+lasso_fp_score = lasso_fp.score(test_data_xp, test_data_y)
+pred_y = lasso_fp.predict(test_data_xp)
+MSE_lasso_fp = mean_squared_error(test_data_y, pred_y)
+RMSE_lasso_fp = sqrt(mean_squared_error(test_data_y, pred_y))
+print ('lasso_fp score: ', lasso_fp_score)
+print ('Mean square error of lasso_fp: ', MSE_lasso_fp)
+print ('Root mean squared error of lasso_fp:', RMSE_lasso_fp)
+
+
+# In[101]:
+
+
+ridge_f_score = ridge_f.score(test_data_x, test_data_y)
+pred_y = ridge_f.predict(test_data_x)
+MSE_ridge_f = mean_squared_error(test_data_y, pred_y)
+RMSE_ridge_f = sqrt(mean_squared_error(test_data_y, pred_y))
+print ('ridge_f score: ', ridge_f_score)
+print ('Mean square error of ridge_f: ', MSE_ridge_f)
+print ('Root mean squared error of ridge_f:', RMSE_ridge_f)
+
+
+# In[102]:
+
+
+test_data_xp = poly.fit_transform(test_data_x)
+ridge_fp_score = ridge_fp.score(test_data_xp, test_data_y)
+pred_y = ridge_fp.predict(test_data_xp)
+MSE_ridge_fp = mean_squared_error(test_data_y, pred_y)
+RMSE_ridge_fp = sqrt(mean_squared_error(test_data_y, pred_y))
+print ('lasso_fp score: ', ridge_fp_score)
+print ('Mean square error of lasso_fp: ', MSE_ridge_fp)
+print ('Root mean squared error of lasso_fp:', RMSE_ridge_fp)
+
+
+# In[103]:
+
+
+rf_score = rf.score(test_data_x, test_data_y)
+pred_y = rf.predict(test_data_x)
+MSE_rf = mean_squared_error(test_data_y, pred_y)
+RMSE_rf = sqrt(mean_squared_error(test_data_y, pred_y))
+
+# The mean squared error and root mean square error
+print ('rf score: ', rf_score)
+print ('Mean square error of rf: ', MSE_rf)
+print ('Root mean squared error of rf:', RMSE_rf)
+
+
+# In[696]:
+
+
+lst_score = [lasso_f_score, lasso_fp_score, ridge_f_score, ridge_fp_score, rf_score]
+MSE_lst =  [MSE_lasso_f, MSE_lasso_fp, MSE_ridge_f, MSE_ridge_fp, MSE_rf]
+RMSE_lst =  [RMSE_lasso_f, RMSE_lasso_fp, RMSE_ridge_f, RMSE_ridge_fp, RMSE_rf]
+model_lst = ['Lasso_linear','Lasso poly', 'Ridge linear', 'Ridge poly', 'Random forest']
+
+plt.figure(1)
+plt.plot(model_lst, lst_score, "ro")
+plt.grid(True)
+plt.xlabel("model", fontsize = 14)
+plt.ylabel("score", fontsize = 14)
+plt.show()
+
+plt.figure(2)
+plt.plot(model_lst, MSE_lst, "g^")
+plt.grid(True)
+plt.xlabel("model", fontsize = 14)
+plt.ylabel("mean square error", fontsize = 14)
+plt.show()
+
+plt.figure(3)
+plt.plot(model_lst, MSE_lst, "bs")
+plt.grid(True)
+plt.xlabel("model", fontsize = 14)
+plt.ylabel("root mean square error", fontsize = 14)
+plt.show()
+
+
+# # Feature importance
+# Random forest(RF) shows the best prediction accuracy. Therefore, the feature importance will be extracted from the RF model.
+
+# In[104]:
+
+
+importance = rf.feature_importances_
+
+
+# In[105]:
+
+
+importance
+
+
+# In[700]:
+
+
+indices = np.argsort(importance)[::-1]
+indices
+
+
+# In[699]:
+
+
+#std = np.std([tree.feature_importances_ for tree in rf.estimators_], axis=0)
+#std
+
+
+# In[701]:
+
+
+feature_name = train_data_x.columns.get_values()
+feature_name
+
+
+# In[702]:
+
+
+for f in range(train_data_x.shape[1]):
+    print ("%d. feature %s (%f)" %(f + 1, feature_name[indices[f]], importance[indices[f]]))
+
+
+# In[703]:
+
+
+plt.figure()
+plt.bar(feature_name[indices[0:9]], importance[indices[0:9]],
+       color="r", align="center")
+plt.title("Feature importances")
+plt.xticks(rotation = 90, fontsize = 12)
+plt.show()
+
